@@ -387,6 +387,9 @@ const SHIFTS = {
 // アウトレット到着 → シフト開始まで最低限必要な余裕（分）
 const ARRIVE_BUFFER = 30; // シフト開始の何分前までに到着が必要か
 
+// 三田駅着 → バス停までの徒歩（分）
+const SANDA_TRANSFER_MIN = 5;
+
 // ================================================================
 // ⚙️  経路定数
 // ================================================================
@@ -699,6 +702,7 @@ function buildCard(j, state) {
   }
 
   // 電車区間
+  const sandaWait = toMin(j.bus_sanda) - toMin(j.arrive_sanda);
   let trainLegs;
   if (j.direct) {
     const min = toMin(j.arrive_sanda) - toMin(j.train_tenmagu);
@@ -716,6 +720,13 @@ function buildCard(j, state) {
         `${j.transfer_depart} 発`,
         `${j.transfer_station} 乗換 → 三田（${j.transfer_line} 約${min2}分）`, false);
   }
+  // 三田 着 → バス停まで徒歩
+  const sandaLabel = sandaWait < SANDA_TRANSFER_MIN
+    ? `<span style="color:var(--red)">⚠️ 接続不可（${sandaWait}分・${SANDA_TRANSFER_MIN}分必要）</span>`
+    : sandaWait <= SANDA_TRANSFER_MIN + 2
+      ? `三田 → バス停 徒歩約${SANDA_TRANSFER_MIN}分（ギリギリ・急いで）`
+      : `三田 → バス停 徒歩約${SANDA_TRANSFER_MIN}分（${sandaWait - SANDA_TRANSFER_MIN}分余裕）`;
+  const sandaLeg = legRow("walk", "🚶", `${j.arrive_sanda} 着`, sandaLabel, false);
 
   return `
     <div class="${cardCls}">
@@ -729,6 +740,7 @@ function buildCard(j, state) {
         ${legRow("walk", "🚶", `徒歩 約${WALK_MIN}分`,
           `南森町 → 大阪天満宮（地下連絡通路）`, false)}
         ${trainLegs}
+        ${sandaLeg}
         ${legRow("bus", "🚌", `${j.bus_sanda} 発`,
           `三田駅南口 → 神戸三田プレミアム・アウトレット（神姫バス）`, false)}
         ${legRow("goal", "🏬", `${j.arrive_outlet} 着`,
