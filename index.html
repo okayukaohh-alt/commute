@@ -33,7 +33,6 @@
       padding-bottom: env(safe-area-inset-bottom, 24px);
     }
 
-    /* ── ヘッダー ── */
     .header {
       padding: 24px 20px 16px;
       text-align: center;
@@ -65,7 +64,6 @@
     .badge.weekday { color: var(--primary); border-color: rgba(88,166,255,.4); }
     .badge.holiday { color: var(--orange);  border-color: rgba(210,153,34,.4); }
 
-    /* ── 日付ナビ ── */
     .date-nav {
       display: flex;
       align-items: center;
@@ -110,7 +108,6 @@
       border-radius: 4px; padding: 1px 7px;
     }
 
-    /* ── シフトバー ── */
     .shift-bar {
       display: flex;
       align-items: center;
@@ -178,7 +175,6 @@
     }
     .shift-clear:hover { color: var(--text); }
 
-    /* ── シフト情報バー ── */
     .shift-info {
       padding: 9px 16px;
       font-size: 0.81rem;
@@ -191,7 +187,6 @@
     .shift-info.visible { display: block; }
     .shift-info strong { color: var(--primary); }
 
-    /* ── カードエリア ── */
     .cards {
       max-width: 480px;
       margin: 0 auto;
@@ -207,7 +202,6 @@
       margin: 14px 0 8px 2px;
     }
 
-    /* ── カード ── */
     .card {
       background: var(--card);
       border: 1px solid var(--border);
@@ -222,7 +216,6 @@
     }
     .card.is-past { opacity: 0.32; }
 
-    /* ── カウントダウン ── */
     .ctd {
       position: absolute;
       top: 12px; right: 12px;
@@ -239,7 +232,6 @@
 
     @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.35} }
 
-    /* ── ★ 推奨バッジ ── */
     .rec-badge {
       display: inline-block;
       font-size: 0.72rem;
@@ -252,7 +244,6 @@
       letter-spacing: .5px;
     }
 
-    /* ── 直通 / 乗換バッジ ── */
     .type-badge {
       display: inline-block;
       font-size: 0.68rem;
@@ -265,7 +256,6 @@
     .type-badge.direct   { color: var(--green);  background: rgba(63,185,80,.14); }
     .type-badge.transfer { color: var(--orange); background: rgba(210,153,34,.14); }
 
-    /* ── 行動バー ── */
     .action-bar {
       border-left: 3px solid var(--primary);
       padding: 8px 12px;
@@ -280,7 +270,6 @@
       margin-bottom: 2px;
     }
 
-    /* ── 区間 ── */
     .legs { display: flex; flex-direction: column; }
 
     .leg {
@@ -336,7 +325,6 @@
       margin-bottom: 12px;
     }
 
-    /* ── メッセージ ── */
     .msg {
       text-align: center;
       padding: 52px 20px;
@@ -374,7 +362,7 @@
 
 <script>
 // ================================================================
-// ⚙️  シフト設定
+// シフト設定
 // ================================================================
 const SHIFTS = {
   E: { start: "09:00" },
@@ -384,109 +372,60 @@ const SHIFTS = {
   O: { start: "11:50" },
 };
 
-// アウトレット到着 → シフト開始まで最低限必要な余裕（分）
-const ARRIVE_BUFFER = 30; // シフト開始の何分前までに到着が必要か
-
-// 三田駅着 → バス停までの徒歩（分）
+const ARRIVE_BUFFER = 30;
 const SANDA_TRANSFER_MIN = 5;
+const WALK_MIN   = 8;
+const SUBWAY_MIN = 4;
 
 // ================================================================
-// ⚙️  経路定数
+// 時刻表データ（JR時刻：Yahoo!乗換案内で確認済み 2026.06）
 // ================================================================
-const WALK_MIN   = 8;  // 南森町 → 大阪天満宮 徒歩（分）
-const SUBWAY_MIN = 4;  // 堺筋本町 → 南森町 乗車（分）
-
-// ================================================================
-// ⚙️  時刻表データ  ← 実際の時刻に書き換えてください
-// ================================================================
-//
-// フィールド説明:
-//   direct           = true（直通）/ false（途中で乗換が必要）
-//   train_tenmagu    = 大阪天満宮 発（JR東西線）★ここが重要
-//   arrive_sanda     = 三田 着
-//   bus_sanda        = 三田駅南口 バス発（神姫バス）★最重要・逃したら次まで待つ
-//   arrive_outlet    = 神戸三田プレミアム・アウトレット 着
-//
-//   --- 乗換あり（direct: false）の場合のみ追加 ---
-//   transfer_station = 乗換駅（"尼崎" or "宝塚"）
-//   transfer_depart  = 乗換駅 発時刻
-//   transfer_line    = 乗換後の路線名
-//
-// 【時刻の調べ方】
-//   バス: 神姫バス公式 → 三田駅南口 → 神戸三田プレミアム・アウトレット
-//   電車: JR西日本公式 or 駅すぱあと → 大阪天満宮 → 三田
-//
-// ================================================================
-// データソース:
-//   バス時刻 → 神戸三田プレミアム・アウトレット公式サイト 確認済み
-//             （平日:2025.10.14改訂 / 土日祝:2026.4.1改訂）
-//   JR時刻  → ⚠️ Yahoo/NAVITIMEから取得した概算（±5分程度の誤差あり）
-//              使用前に乗換案内アプリで必ず確認してください
-// ================================================================
-
-// ──────────────────────────────────────────────────────────────────
-// 推奨バス = シフトスタートの30分前に到着できる最も遅いバス
-//
-//   E  9:00スタート → deadline 8:30 → 推奨バス 08:05（outlet 08:25着）
-//   I 10:00スタート → deadline 9:30 → 推奨バス 09:05（outlet 09:25着）
-//   K 10:30スタート → deadline 10:00 → 推奨バス 09:25（outlet 09:45着）
-//   M 11:00スタート → deadline 10:30 → 推奨バス 10:10（outlet 10:30着）
-//   O 11:50スタート → deadline 11:20 → 推奨バス 11:00（outlet 11:20着）
-//
-//   バス時刻: 神戸三田プレミアム・アウトレット公式サイト 確認済み
-//   JR時刻:  ⚠️ Yahoo/NAVITIME 概算（±5分）。乗換案内で要確認
-// ──────────────────────────────────────────────────────────────────
-
 const SCHEDULES = {
   weekday: [
-    // E 推奨（outlet 08:25着、9:00スタート35分前）
-    // ⚠️ JR 06:56発は早朝。直通か乗換案内で確認を
-    { direct: true, train_tenmagu: "06:56", arrive_sanda: "07:53",
+    // E推奨（outlet 08:25着、9:00スタート35分前）
+    { direct: true, train_tenmagu: "07:06", arrive_sanda: "07:58",
       bus_sanda: "08:05", arrive_outlet: "08:25" },
 
-    // I/K/M/O の早め選択肢
-    { direct: true, train_tenmagu: "07:14", arrive_sanda: "08:11",
+    // I/K/M/O 早め選択肢
+    { direct: true, train_tenmagu: "07:14", arrive_sanda: "08:09",
       bus_sanda: "08:23", arrive_outlet: "08:43" },
 
-    // I 推奨（outlet 09:25着、10:00スタート35分前）
-    { direct: true, train_tenmagu: "07:56", arrive_sanda: "08:53",
+    // I推奨（outlet 09:25着、10:00スタート35分前）
+    { direct: true, train_tenmagu: "08:07", arrive_sanda: "09:00",
       bus_sanda: "09:05", arrive_outlet: "09:25" },
 
-    // K 推奨（outlet 09:45着、10:30スタート45分前）
-    { direct: true, train_tenmagu: "08:11", arrive_sanda: "09:08",
+    // K推奨（outlet 09:45着、10:30スタート45分前）
+    { direct: true, train_tenmagu: "08:11", arrive_sanda: "09:09",
       bus_sanda: "09:25", arrive_outlet: "09:45" },
 
-    // M/O の選択肢
-    { direct: true, train_tenmagu: "08:38", arrive_sanda: "09:35",
+    // M/O 選択肢
+    { direct: true, train_tenmagu: "08:38", arrive_sanda: "09:36",
       bus_sanda: "09:46", arrive_outlet: "10:06" },
 
-    // M 推奨（outlet 10:30着、11:00スタート30分ちょうど）
-    // ⚠️ JR 08:55発は要確認
-    { direct: true, train_tenmagu: "08:55", arrive_sanda: "09:52",
+    // M推奨（outlet 10:30着、11:00スタート30分ちょうど）
+    { direct: true, train_tenmagu: "08:55", arrive_sanda: "09:54",
       bus_sanda: "10:10", arrive_outlet: "10:30" },
 
     // M ギリギリ（outlet 10:50着、11:00スタート10分前）
-    { direct: true, train_tenmagu: "09:17", arrive_sanda: "10:14",
+    { direct: true, train_tenmagu: "09:17", arrive_sanda: "10:13",
       bus_sanda: "10:30", arrive_outlet: "10:50" },
 
-    // O の選択肢（直通・三田で46分待ち）
-    { direct: true, train_tenmagu: "09:17", arrive_sanda: "10:14",
+    // O 選択肢（三田で47分待ち）
+    { direct: true, train_tenmagu: "09:17", arrive_sanda: "10:13",
       bus_sanda: "11:00", arrive_outlet: "11:20" },
 
-    // O 選択肢（宝塚乗換・三田30分待ち）
-    // ⚠️ 大阪天満宮→宝塚の所要時間は乗換案内で確認を
+    // O 選択肢（宝塚乗換）
     { direct: false,
-      train_tenmagu: "09:28",
+      train_tenmagu: "09:40",
       transfer_station: "宝塚",
       transfer_depart: "10:17",
       transfer_line: "JR宝塚線（丹波路快速）",
       arrive_sanda: "10:30",
       bus_sanda: "11:00", arrive_outlet: "11:20" },
 
-    // O 選択肢（宝塚乗換・三田6分待ち、タイト）
-    // ⚠️ 三田での乗換6分。遅延時は注意
+    // O 選択肢（宝塚乗換・タイト）
     { direct: false,
-      train_tenmagu: "09:44",
+      train_tenmagu: "09:58",
       transfer_station: "宝塚",
       transfer_depart: "10:37",
       transfer_line: "JR宝塚線",
@@ -494,9 +433,8 @@ const SCHEDULES = {
       bus_sanda: "11:00", arrive_outlet: "11:20" },
 
     // O ギリギリ（outlet 11:32着、11:50スタート18分前）
-    // ⚠️ 宝塚10:48区間快速→三田11:05→11:12バスまで7分
     { direct: false,
-      train_tenmagu: "09:58",
+      train_tenmagu: "10:11",
       transfer_station: "宝塚",
       transfer_depart: "10:48",
       transfer_line: "JR宝塚線（区間快速）",
@@ -505,44 +443,36 @@ const SCHEDULES = {
   ],
 
   holiday: [
-    // E 推奨（outlet 08:26着、9:00スタート34分前）
-    // ⚠️ JR 06:56発は早朝・土日祝ダイヤ要確認
-    { direct: true, train_tenmagu: "06:56", arrive_sanda: "07:53",
+    // E推奨（outlet 08:26着、9:00スタート34分前）
+    { direct: true, train_tenmagu: "07:12", arrive_sanda: "08:00",
       bus_sanda: "08:06", arrive_outlet: "08:26" },
 
-    // I/K/M/O の早め選択肢
-    { direct: true, train_tenmagu: "07:14", arrive_sanda: "08:11",
+    // I/K/M/O 早め選択肢
+    { direct: true, train_tenmagu: "07:26", arrive_sanda: "08:14",
       bus_sanda: "08:28", arrive_outlet: "08:48" },
 
-    // I 推奨（outlet 09:26着、10:00スタート34分前）
-    // ⚠️ 大阪天満宮の出発時刻は乗換案内で要確認（三田09:00着から逆算した推定値）
-    { direct: true, train_tenmagu: "08:03", arrive_sanda: "09:00",
+    // I推奨（outlet 09:26着、10:00スタート34分前）
+    { direct: true, train_tenmagu: "08:13", arrive_sanda: "09:00",
       bus_sanda: "09:06", arrive_outlet: "09:26" },
 
-    // K/M/O の早め選択肢
-    { direct: true, train_tenmagu: "08:13", arrive_sanda: "09:10",
-      bus_sanda: "09:21", arrive_outlet: "09:41" },
-
-    // K 推奨（outlet 09:56着、10:30スタート34分前）
-    // 乗換案内で確認済み: 08:13発 → 三田09:10着 → バスまで26分待ち
-    { direct: true, train_tenmagu: "08:13", arrive_sanda: "09:10",
+    // K推奨（outlet 09:56着、10:30スタート34分前）
+    { direct: true, train_tenmagu: "08:26", arrive_sanda: "09:15",
       bus_sanda: "09:36", arrive_outlet: "09:56" },
 
-    // M 推奨（outlet 10:30着、11:00スタート30分ちょうど）
-    // ⚠️ JR 08:55発は土日祝要確認
-    { direct: true, train_tenmagu: "08:55", arrive_sanda: "09:52",
+    // M推奨（outlet 10:30着、11:00スタート30分ちょうど）
+    { direct: true, train_tenmagu: "08:56", arrive_sanda: "09:54",
       bus_sanda: "10:10", arrive_outlet: "10:30" },
 
-    // O 選択肢（outlet 11:00着、11:50スタート50分前）
-    { direct: true, train_tenmagu: "09:17", arrive_sanda: "10:14",
-      bus_sanda: "10:40", arrive_outlet: "11:00" },
-
-    // M ギリギリ（outlet 10:52着、11:00スタート8分前）
-    { direct: true, train_tenmagu: "09:17", arrive_sanda: "10:14",
+    // M ギリギリ / O 選択肢
+    { direct: true, train_tenmagu: "09:13", arrive_sanda: "10:09",
       bus_sanda: "10:32", arrive_outlet: "10:52" },
 
+    // O 選択肢（outlet 11:01着、11:50スタート49分前）
+    { direct: true, train_tenmagu: "09:13", arrive_sanda: "10:09",
+      bus_sanda: "10:40", arrive_outlet: "11:00" },
+
     // O ギリギリ（outlet 11:21着、11:50スタート29分前）
-    { direct: true, train_tenmagu: "09:17", arrive_sanda: "10:14",
+    { direct: true, train_tenmagu: "09:13", arrive_sanda: "10:09",
       bus_sanda: "11:01", arrive_outlet: "11:21" },
   ],
 };
@@ -550,7 +480,6 @@ const SCHEDULES = {
 // ================================================================
 // ユーティリティ
 // ================================================================
-
 function toMin(timeStr) {
   const [h, m] = timeStr.split(":").map(Number);
   return h * 60 + m;
@@ -570,39 +499,31 @@ function toDate(timeStr) {
 
 function isHoliday() { return [0, 6].includes(selectedDate.getDay()); }
 
-// 堺筋本町の出発時刻（大阪天満宮発から逆算）
 function subwayDepart(j) {
   return addMin(j.train_tenmagu, -(WALK_MIN + SUBWAY_MIN));
 }
 
-// このシフトに間に合うか（30分前ルール）
 function fitsShift(j, key) {
   return toMin(j.arrive_outlet) <= toMin(SHIFTS[key].start) - ARRIVE_BUFFER;
 }
 
-// ギリギリ含め物理的に間に合うか（スタート前に到着するか）
 function fitsShiftAny(j, key) {
   return toMin(j.arrive_outlet) < toMin(SHIFTS[key].start);
 }
 
-// まだ乗れるか（選択日・時刻を考慮）
 function catchable(j) {
   const today = new Date(); today.setHours(0,0,0,0);
   const sel   = new Date(selectedDate.getTime()); sel.setHours(0,0,0,0);
   const diff  = sel.getTime() - today.getTime();
-  if (diff > 0) return true;   // 未来の日 → すべて乗れる
-  if (diff < 0) return false;  // 過去の日 → すべて乗れない
-  // 今日 → 現在時刻と比較
+  if (diff > 0) return true;
+  if (diff < 0) return false;
   return toDate(subwayDepart(j)).getTime() - Date.now() > -90_000;
 }
 
 // ================================================================
 // 状態管理
 // ================================================================
-
 let currentShift = localStorage.getItem("commute_shift") || null;
-
-// ── 日付状態 ──────────────────────────────────────────────────────
 let selectedDate = (() => { const d = new Date(); d.setHours(0,0,0,0); return d; })();
 
 function changeDate(delta) {
@@ -633,7 +554,6 @@ function selectShift(key) {
 // ================================================================
 // カード構築
 // ================================================================
-
 function ctdLabel(diffMs) {
   const m = diffMs / 60_000;
   if (m < -1)  return { text: `${Math.abs(Math.round(m))}分前`, cls: "gone" };
@@ -657,18 +577,15 @@ function legRow(iconCls, emoji, time, desc, last) {
     </div>`;
 }
 
-// state: "best" | "next" | "upcoming" | "past"
 function buildCard(j, state) {
   const dep    = subwayDepart(j);
   const isToday = isTodaySelected();
-
-  // カウントダウン（今日のみ）
   const diffMs  = toDate(dep) - Date.now();
   const ctd     = ctdLabel(diffMs);
 
-  const isBest     = state === "best";
-  const isNext     = state === "next";
-  const isPast     = state === "past";
+  const isBest = state === "best";
+  const isNext = state === "next";
+  const isPast = state === "past";
 
   const cardCls = `card${(isBest || isNext) ? " highlight" : ""}${isPast ? " is-past" : ""}`;
 
@@ -679,7 +596,6 @@ function buildCard(j, state) {
   const recBadge = isBest
     ? `<div class="rec-badge">★ この便が最適（最も遅く出発できる）</div>` : "";
 
-  // 未来日ラベル
   const futureLabelStr = !isToday && !isPast
     ? `<span class="future-label">${selectedDate.toLocaleDateString("ja-JP",{month:"numeric",day:"numeric",weekday:"short"})}</span> `
     : "";
@@ -702,7 +618,6 @@ function buildCard(j, state) {
     }
   }
 
-  // 電車区間
   const sandaWait = toMin(j.bus_sanda) - toMin(j.arrive_sanda);
   let trainLegs;
   if (j.direct) {
@@ -721,7 +636,7 @@ function buildCard(j, state) {
         `${j.transfer_depart} 発`,
         `${j.transfer_station} 乗換 → 三田（${j.transfer_line} 約${min2}分）`, false);
   }
-  // 三田 着 → バス停まで徒歩
+
   const sandaLabel = sandaWait < SANDA_TRANSFER_MIN
     ? `<span style="color:var(--red)">⚠️ 接続不可（${sandaWait}分・${SANDA_TRANSFER_MIN}分必要）</span>`
     : sandaWait <= SANDA_TRANSFER_MIN + 2
@@ -753,7 +668,6 @@ function buildCard(j, state) {
 // ================================================================
 // レンダリング
 // ================================================================
-
 function initShiftButtons() {
   document.getElementById("shift-btns").innerHTML =
     Object.entries(SHIFTS).map(([key, s]) => `
@@ -767,28 +681,23 @@ function render() {
   const isHol = isHoliday();
   const list  = isHol ? SCHEDULES.holiday : SCHEDULES.weekday;
 
-  // 時計（常に現在時刻）
   document.getElementById("clock").textContent =
     `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
 
-  // 日付（selectedDate）・ダイヤバッジ
   document.getElementById("date-str").textContent =
     selectedDate.toLocaleDateString("ja-JP", { month:"long", day:"numeric", weekday:"short" });
   const dayBadge = document.getElementById("day-badge");
   dayBadge.textContent = isHol ? "土休日ダイヤ" : "平日ダイヤ";
   dayBadge.className   = `badge ${isHol ? "holiday" : "weekday"}`;
 
-  // 「今日に戻る」ボタンの表示制御
   document.getElementById("today-btn").style.display = isTodaySelected() ? "none" : "inline-block";
 
-  // シフトボタン状態
   Object.keys(SHIFTS).forEach(k => {
     const btn = document.getElementById(`sbtn-${k}`);
     if (btn) btn.className = `shift-btn${currentShift === k ? " active" : ""}`;
   });
   document.getElementById("shift-clear").style.display = currentShift ? "block" : "none";
 
-  // ── シフト選択モード ──────────────────────────────────────
   if (currentShift) {
     const shift    = SHIFTS[currentShift];
     const deadline = addMin(shift.start, -ARRIVE_BUFFER);
@@ -799,11 +708,8 @@ function render() {
       `<strong>${currentShift} シフト</strong>（${shift.start} スタート）—
        アウトレット <strong>${deadline} 着</strong>までが必要`;
 
-    // 物理的に間に合う便（スタート前に到着するもの全て）
-    const anyFitting = list.filter(j => fitsShiftAny(j, currentShift));
-    // そのうち30分前ルールを満たすもの
-    const comfFitting = anyFitting.filter(j => fitsShift(j, currentShift));
-    // ギリギリ（30分ルール外だが間に合う）
+    const anyFitting   = list.filter(j => fitsShiftAny(j, currentShift));
+    const comfFitting  = anyFitting.filter(j => fitsShift(j, currentShift));
     const tightFitting = anyFitting.filter(j => !fitsShift(j, currentShift));
 
     if (anyFitting.length === 0) {
@@ -818,25 +724,20 @@ function render() {
 
     let html = "";
 
-    // 出発済み（直前の余裕あり便1件のみ）
     const pastComf = comfFitting.filter(j => !catchable(j));
     if (pastComf.length > 0) {
       html += `<div class="section-label">出発済み</div>`;
       html += buildCard(pastComf[pastComf.length - 1], "past");
     }
 
-    // これから乗れる便
     const comfFuture  = comfFitting.filter(j => catchable(j));
     const tightFuture = tightFitting.filter(j => catchable(j));
 
     if (comfFuture.length === 0 && tightFuture.length === 0) {
       html += `<div class="msg"><div class="emoji">⏰</div>${currentShift} シフトに間に合う便は<br>本日すべて出発しました。</div>`;
     } else {
-      // ★ 推奨 = 余裕あり便の中で最も遅い出発
       const best = comfFuture.length > 0 ? comfFuture[comfFuture.length - 1] : null;
-      // 余裕あり（推奨以外）、遅い順
       const comfOthers = comfFuture.filter(j => j !== best).reverse();
-      // ギリギリ、遅い順
       const tightSorted = [...tightFuture].reverse();
 
       if (best) {
@@ -855,11 +756,9 @@ function render() {
 
     document.getElementById("cards").innerHTML = html;
 
-  // ── 通常モード（シフト未選択） ─────────────────────────────
   } else {
     document.getElementById("shift-info").classList.remove("visible");
 
-    // 直前の過去便インデックス
     let lastPastIdx = -1;
     list.forEach((j, i) => { if (!catchable(j)) lastPastIdx = i; });
 
@@ -886,9 +785,6 @@ function render() {
   }
 }
 
-// ================================================================
-// 起動
-// ================================================================
 initShiftButtons();
 render();
 setInterval(render, 10_000);
